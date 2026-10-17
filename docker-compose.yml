@@ -1,0 +1,19 @@
+# =============================================================================
+# Fichier     : docker-compose.yml
+# Rôle        : lancer le front Angular seul, servi par Nginx sur http://localhost
+# Utilise     : Dockerfile (construction de l'image)
+# Utilisé par : la commande docker compose up -d (exercice 1)
+# =============================================================================
+
+services:
+  # Le front Angular compilé, servi par Nginx (utilisateur non root)
+  front:
+    # Construit l'image avec le Dockerfile du dossier courant
+    build: .
+    # Nom de l'image construite (":local" = construite sur le poste, pas par la CI)
+    image: olympic-participation-tracker:local
+    # Port de la machine : port du conteneur → http://localhost
+    ports:
+      - "80:80"
+    # Relance automatique en cas de plantage, sauf arrêt volontaire
+    restart: unless-stopped

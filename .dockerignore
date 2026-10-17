@@ -1,0 +1,31 @@
+# =============================================================================
+# Fichier     : .dockerignore
+# Rôle        : exclure du contexte de build Docker ce qui est inutile ou
+#               régénéré dans l'image (plus rapide, plus sûr, cache préservé)
+# Utilisé par : docker build (via le Dockerfile et docker-compose.yml)
+# =============================================================================
+
+# Régénérés pendant le build (npm ci, npm run build)
+node_modules
+dist
+.angular
+
+# Résultats de tests et journaux
+reports
+test-results
+coverage
+*.log
+
+# Git, éditeur, documentation, Kubernetes
+.git
+.gitignore
+.vscode
+.editorconfig
+README.md
+k8s
+values.tpl.yaml
+
+# Fichiers Docker eux-mêmes
+Dockerfile
+.dockerignore
+docker-compose.yml
