@@ -40,3 +40,7 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+### Rapports de tests (produits par scripts/run-tests.sh) ###
+reports/
+test-results/
