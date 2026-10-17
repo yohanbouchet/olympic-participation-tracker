@@ -1,9 +1,11 @@
 # =============================================================================
 # Fichier     : Dockerfile
-# Rôle        : construire l'image du front Angular (Olympic Participation Tracker)
+# Rôle        : construire l'image du front Angular
+#               (Olympic Participation Tracker)
 #               en deux étages : compilation avec Node, puis service avec Nginx
 # Utilise     : package.json, package-lock.json, src/, nginx/nginx.conf
-# Utilisé par : docker-compose.yml (exercice 1), pipeline GitLab CI (exercice 2)
+# Utilisé par : docker-compose.yml (exercice 1),
+#               pipeline GitLab CI (exercice 2)
 # =============================================================================
 
 # ---------- Étage 1 : construction (l'atelier) ----------
@@ -11,7 +13,8 @@
 FROM node:24-alpine AS build
 WORKDIR /build
 
-# Dépendances d'abord : cette couche reste en cache tant qu'elles ne changent pas
+# Dépendances d'abord : cette couche reste en cache tant qu'elles ne
+# changent pas
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -27,7 +30,8 @@ FROM nginx:1.30-alpine
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # On ne récupère QUE le site compilé, donné à l'utilisateur nginx
-COPY --from=build --chown=nginx:nginx /build/dist/olympic-games-starter/browser /app
+COPY --from=build --chown=nginx:nginx \
+     /build/dist/olympic-games-starter/browser /app
 
 # Sécurité : le serveur ne tourne pas en root
 USER nginx

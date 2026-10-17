@@ -1,7 +1,8 @@
 # =============================================================================
 # Fichier     : .dockerignore
 # Rôle        : exclure du contexte de build Docker ce qui est inutile ou
-#               régénéré dans l'image (plus rapide, plus sûr, cache préservé)
+#               régénéré dans l'image
+#               (plus rapide, plus sûr, cache préservé)
 # Utilisé par : docker build (via le Dockerfile et docker-compose.yml)
 # =============================================================================
 
