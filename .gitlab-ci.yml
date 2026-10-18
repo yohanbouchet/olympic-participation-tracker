@@ -1,0 +1,86 @@
+# =============================================================================
+# Fichier     : .gitlab-ci.yml
+# Rôle        : pipeline GitLab CI GÉNÉRIQUE, identique dans les deux dépôts
+#               (API Spring Boot et front Angular). Chaque job ne se lance que
+#               si les fichiers de son type de projet existent (rules: exists).
+# Étapes      : test (étape 2) ; build et release viendront ensuite
+# Utilise     : scripts/run-tests.sh (tests + rapport JUnit dans test-results/)
+# =============================================================================
+
+# Images utilisées, centralisées ici pour changer une version en une ligne
+# (images Debian/Ubuntu : Bash est requis par run-tests.sh)
+variables:
+  JDK_IMAGE: "eclipse-temurin:21-jdk"
+  NODE_IMAGE: "node:24-bookworm-slim"
+
+# Déclenchement : sur chaque push de branche et sur les merge requests,
+# sans doublon quand une MR est ouverte (règles lues dans l'ordre)
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+stages:
+  - test
+
+# ---------- Modèle commun aux jobs de test (nom en "." = non lancé seul) ----
+.test:
+  stage: test
+  script:
+    - ./scripts/run-tests.sh
+  # Rapports conservés MÊME en cas d'échec : c'est là qu'on en a besoin
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - test-results/
+    # Lu par GitLab : résultats affichés dans l'onglet Tests et dans la MR
+    reports:
+      junit: test-results/*.xml
+
+# ---------- API Spring Boot : seulement si le dépôt contient gradlew ----------
+test:spring-boot:
+  extends: .test
+  image: $JDK_IMAGE
+  # Gradle range ses téléchargements dans le projet pour pouvoir les cacher
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  # Cache réutilisé tant que les dépendances et la version de Gradle
+  # ne changent pas
+  cache:
+    key:
+      files:
+        - build.gradle
+        - gradle/wrapper/gradle-wrapper.properties
+    paths:
+      - .gradle/wrapper
+      - .gradle/caches
+  rules:
+    - exists:
+        - gradlew
+
+# ---------- Front Angular : seulement si le dépôt contient angular.json -------
+test:angular:
+  extends: .test
+  image: $NODE_IMAGE
+  variables:
+    # Chromium installé ci-dessous, utilisé par Karma (via run-tests.sh)
+    CHROME_BIN: /usr/bin/chromium
+    # npm range ses téléchargements dans le projet pour pouvoir les cacher
+    npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  # Cache réutilisé tant que package-lock.json ne change pas
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  # L'image Node ne contient pas de navigateur : on installe Chromium
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends chromium > /dev/null
+  rules:
+    - exists:
+        - angular.json
