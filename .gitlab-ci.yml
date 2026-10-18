@@ -12,6 +12,9 @@
 variables:
   JDK_IMAGE: "eclipse-temurin:21-jdk"
   NODE_IMAGE: "node:24-bookworm-slim"
+  # Client Docker et démon Docker-in-Docker (même version majeure)
+  DOCKER_IMAGE: "docker:29"
+  DIND_IMAGE: "docker:29-dind"
 
 # Déclenchement : sur chaque push de branche et sur les merge requests,
 # sans doublon quand une MR est ouverte (règles lues dans l'ordre)
@@ -24,6 +27,7 @@ workflow:
 
 stages:
   - test
+  - build
 
 # ---------- Modèle commun aux jobs de test (nom en "." = non lancé seul) ----
 .test:
@@ -84,3 +88,39 @@ test:angular:
   rules:
     - exists:
         - angular.json
+
+# ---------- Construction, test et publication de l'image Docker ----------
+build:image:
+  stage: build
+  # Client Docker + démon Docker-in-Docker lancé à côté, sous le nom "docker"
+  image: $DOCKER_IMAGE
+  services:
+    - name: $DIND_IMAGE
+      alias: docker
+  variables:
+    # Communication chiffrée (TLS) entre le client et le démon Docker
+    DOCKER_TLS_CERTDIR: "/certs"
+    # Deux tags pour la même image : SHA court (immuable, traçabilité)
+    # et nom de branche "nettoyé" (toujours la dernière image de la branche)
+    IMAGE_SHA: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    IMAGE_BRANCH: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+  before_script:
+    # smoke-test.sh est écrit en Bash, absent de l'image docker (Alpine)
+    - apk add --no-cache bash > /dev/null
+    # Connexion au registre avec les identifiants temporaires fournis par
+    # GitLab ; --password-stdin : le mot de passe n'apparaît pas dans les logs
+    - echo "$CI_REGISTRY_PASSWORD"
+      | docker login --username "$CI_REGISTRY_USER"
+      --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --pull --tag "$IMAGE_SHA" --tag "$IMAGE_BRANCH" .
+    # L'image doit démarrer et répondre AVANT d'être publiée
+    - ./scripts/smoke-test.sh "$IMAGE_SHA"
+    - docker push "$IMAGE_SHA"
+    - docker push "$IMAGE_BRANCH"
+  # Seulement sur les pipelines de branche (le tag porte le nom de branche)
+  # et si le dépôt contient un Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
