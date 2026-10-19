@@ -114,11 +114,12 @@ its project type exist (`rules: exists`), so the pipeline adapts itself.
 flowchart LR
   A[git push or merge request] --> B[test: scripts/run-tests.sh]
   B --> C[JUnit report in the GitLab Tests tab]
-  B -.-> D[build: Docker image to Container Registry]
-  D -.-> E[release: semantic-release]
+  B --> D[build: docker build + scripts/smoke-test.sh]
+  D --> E[push to the GitLab Container Registry]
+  E -.-> F[release: semantic-release]
 ```
 
-Dotted steps are planned and will be added next.
+The dotted step (release) is planned and will be added next.
 
 - **Triggers**: every branch push and every merge request (no duplicate
   pipeline when a merge request is open).
@@ -127,6 +128,14 @@ Dotted steps are planned and will be added next.
 - **Cache**: dependencies are cached between pipelines. Measured on the API:
   Gradle tests went from 59 s to 17 s, and the whole pipeline from 1 min 32
   to 51 s.
+- **Build** (branch pipelines only, after all tests passed): the image is
+  built with Docker-in-Docker, started once by `scripts/smoke-test.sh`, and
+  pushed only if it answers. Each image gets two tags: the branch name
+  (`:main`, moves with the branch) and the short commit SHA (`:3a979237`,
+  never changes).
+- **Secrets**: the registry password is a temporary job token provided by
+  GitLab, sent with `--password-stdin` (never printed) and removed at the end
+  of the job (`docker logout` in `after_script`).
 
 ### Configuration differences between the two projects
 
@@ -138,6 +147,27 @@ Dotted steps are planned and will be added next.
 | Test command (inside `run-tests.sh`) | `./gradlew clean test` | `npm test` (Karma, headless Chrome) |
 | Raw JUnit reports | `build/test-results/test/` | `reports/` |
 | Cache | `.gradle/` (key: `build.gradle` + Gradle wrapper version) | `.npm/` (key: `package-lock.json`) |
+| Build job | `build:image` (shared) | `build:image` (shared) |
+| Docker image | multi-stage: JDK 21 + Gradle, then JRE 21 (WAR) | multi-stage: Node 24, then Nginx 1.30 |
+| Smoke test (inside `smoke-test.sh`) | API + temporary PostgreSQL, `GET /api/notions` | Nginx, `GET /` |
+| Registry image | `registry.gitlab.com/web-device-34-bouchet/workshop-organizer-api` | `registry.gitlab.com/web-device-34-bouchet/olympic-participation-tracker` |
+| Compressed image size | 122.6 MB | 28.6 MB |
 
-Run the same tests locally with `./scripts/run-tests.sh` (exit code 0 = OK,
-1+ = failing tests, 2 = unknown project, 3 = missing tool, 4 = no report).
+### Differences between local and CI environments
+
+| | Local machine | GitLab CI |
+|---|---|---|
+| Tools | Java / Node installed on the machine | official images (`eclipse-temurin`, `node`, `docker`) |
+| Browser for Angular tests | found automatically by `run-tests.sh` | Chromium installed by the job, `CHROME_BIN` set |
+| Dependency cache | `~/.gradle`, `~/.npm` | `.gradle/` and `.npm/` inside the project (GitLab only caches project paths) |
+| Docker | the machine's Docker daemon | Docker-in-Docker service (`docker:29-dind`) |
+| Smoke test ports | none published (no conflict with apps already running, e.g. on 8080) | same script, same behaviour |
+| Database credentials (API) | `.env` file, never committed (see `.env.example`) | random password generated for each smoke test |
+| Registry login | not needed | temporary job token, logged out at the end of the job |
+
+Run the same checks locally:
+
+- `./scripts/run-tests.sh` (exit code 0 = OK, 1+ = failing tests,
+  2 = unknown project, 3 = missing tool, 4 = no report);
+- `docker build -t my-image . && ./scripts/smoke-test.sh my-image`
+  (exit code 0 = the image answers, 1 = it does not, 2 = unknown project).
