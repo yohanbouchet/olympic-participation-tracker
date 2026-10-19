@@ -96,7 +96,6 @@ build:image:
   image: $DOCKER_IMAGE
   services:
     - name: $DIND_IMAGE
-      alias: docker
   variables:
     # Communication chiffrée (TLS) entre le client et le démon Docker
     DOCKER_TLS_CERTDIR: "/certs"
@@ -118,6 +117,10 @@ build:image:
     - ./scripts/smoke-test.sh "$IMAGE_SHA"
     - docker push "$IMAGE_SHA"
     - docker push "$IMAGE_BRANCH"
+  # Déconnexion du registre en fin de job (même en cas d'échec) :
+  # le jeton ne reste pas stocké dans le conteneur
+  after_script:
+    - docker logout "$CI_REGISTRY"
   # Seulement sur les pipelines de branche (le tag porte le nom de branche)
   # et si le dépôt contient un Dockerfile
   rules:
