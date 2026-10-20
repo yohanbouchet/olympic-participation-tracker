@@ -3,8 +3,9 @@
 # Rôle        : pipeline GitLab CI GÉNÉRIQUE, identique dans les deux dépôts
 #               (API Spring Boot et front Angular). Chaque job ne se lance que
 #               si les fichiers de son type de projet existent (rules: exists).
-# Étapes      : test (étape 2) ; build et release viendront ensuite
-# Utilise     : scripts/run-tests.sh (tests + rapport JUnit dans test-results/)
+# Étapes      : test → build (image Docker) → release (semantic-release)
+# Utilise     : scripts/run-tests.sh, scripts/smoke-test.sh, .releaserc.yml
+#               (+ scripts/release.py), variable CI/CD GITLAB_TOKEN
 # =============================================================================
 
 # Images utilisées, centralisées ici pour changer une version en une ligne
@@ -16,18 +17,26 @@ variables:
   DOCKER_IMAGE: "docker:29"
   DIND_IMAGE: "docker:29-dind"
 
-# Déclenchement : sur chaque push de branche et sur les merge requests,
-# sans doublon quand une MR est ouverte (règles lues dans l'ordre)
+# Déclenchement : sur chaque push de branche, sur les merge requests et sur
+# les étiquettes de version, sans doublon (règles lues dans l'ordre, la
+# première qui correspond décide)
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    # Commit de version poussé par semantic-release : pas de pipeline de
+    # branche, son étiquette vX.Y.Z lance déjà le sien (règle suivante)
+    - if: $CI_COMMIT_BRANCH && $CI_COMMIT_MESSAGE =~ /^chore\(release\):/
+      when: never
     - if: $CI_COMMIT_BRANCH
+    # Étiquette de version (ex. v1.2.3) : construit l'image 1.2.3 et latest
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
 
 stages:
   - test
   - build
+  - release
 
 # ---------- Modèle commun aux jobs de test (nom en "." = non lancé seul) ----
 .test:
@@ -99,10 +108,10 @@ build:image:
   variables:
     # Communication chiffrée (TLS) entre le client et le démon Docker
     DOCKER_TLS_CERTDIR: "/certs"
-    # Deux tags pour la même image : SHA court (immuable, traçabilité)
-    # et nom de branche "nettoyé" (toujours la dernière image de la branche)
-    IMAGE_SHA: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
-    IMAGE_BRANCH: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+    # Deux tags pour la même image : l'un FIXE (SHA court, ne change jamais)
+    # et l'autre MOBILE (nom de branche "nettoyé" : toujours la dernière)
+    IMAGE_FIXED: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    IMAGE_MOVING: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
   before_script:
     # smoke-test.sh est écrit en Bash, absent de l'image docker (Alpine)
     - apk add --no-cache bash > /dev/null
@@ -112,18 +121,58 @@ build:image:
       | docker login --username "$CI_REGISTRY_USER"
       --password-stdin "$CI_REGISTRY"
   script:
-    - docker build --pull --tag "$IMAGE_SHA" --tag "$IMAGE_BRANCH" .
+    # Sur une étiquette v1.2.3 : tag fixe 1.2.3 (version sémantique) et tag
+    # mobile latest ; ${CI_COMMIT_TAG#v} retire le "v" du début
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        IMAGE_FIXED="$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
+        IMAGE_MOVING="$CI_REGISTRY_IMAGE:latest"
+      fi
+    - docker build --pull --tag "$IMAGE_FIXED" --tag "$IMAGE_MOVING" .
     # L'image doit démarrer et répondre AVANT d'être publiée
-    - ./scripts/smoke-test.sh "$IMAGE_SHA"
-    - docker push "$IMAGE_SHA"
-    - docker push "$IMAGE_BRANCH"
+    - ./scripts/smoke-test.sh "$IMAGE_FIXED"
+    - docker push "$IMAGE_FIXED"
+    - docker push "$IMAGE_MOVING"
   # Déconnexion du registre en fin de job (même en cas d'échec) :
   # le jeton ne reste pas stocké dans le conteneur
   after_script:
     - docker logout "$CI_REGISTRY"
-  # Seulement sur les pipelines de branche (le tag porte le nom de branche)
+  # Sur les pipelines de branche et d'étiquette (pas en double sur la MR)
   # et si le dépôt contient un Dockerfile
   rules:
-    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
       exists:
         - Dockerfile
+
+# ---------- Release : version, changelog, étiquette, Release GitLab ---------
+release:
+  stage: release
+  image: $NODE_IMAGE
+  variables:
+    # Historique git COMPLET : semantic-release relit tous les commits depuis
+    # la dernière étiquette (GitLab n'en récupère qu'une partie par défaut)
+    GIT_DEPTH: "0"
+  before_script:
+    # git (commit + étiquette) et python3 (scripts/release.py)
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends
+      git python3 ca-certificates > /dev/null
+    # Versions ÉPINGLÉES : même résultat à chaque release
+    # (conventional-changelog-conventionalcommits 10.x est incompatible)
+    - npm install --global --no-audit --no-fund
+      semantic-release@25.0.9
+      @semantic-release/changelog@7.0.0
+      @semantic-release/exec@7.1.0
+      @semantic-release/git@11.0.1
+      @semantic-release/gitlab@13.3.3
+      conventional-changelog-conventionalcommits@9.3.1
+  script:
+    # Lit .releaserc.yml ; utilise GITLAB_TOKEN (variable CI/CD masquée et
+    # protégée) pour pousser le commit, l'étiquette et créer la Release
+    - semantic-release
+  # Bouton ▶ sur la branche principale seulement : on choisit QUAND publier ;
+  # allow_failure : le pipeline reste vert tant qu'on ne l'a pas lancé
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
