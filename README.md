@@ -171,3 +171,22 @@ Run the same checks locally:
   2 = unknown project, 3 = missing tool, 4 = no report);
 - `docker build -t my-image . && ./scripts/smoke-test.sh my-image`
   (exit code 0 = the image answers, 1 = it does not, 2 = unknown project).
+
+## Security
+
+Dependencies are checked with **npm audit**, the Docker image with **trivy**
+(HIGH and CRITICAL vulnerabilities) and the Dockerfile with **hadolint**.
+
+- **Dependency update (October 2026)**: Angular 20.3.7 → 20.3.34 with
+  `ng update` (same major version), then `npm audit fix` without `--force`.
+  Result: npm audit **60 → 6** vulnerabilities, **0 critical**; tests, build
+  and smoke test unchanged.
+- **Remaining vulnerabilities**: the 6 HIGH are all in the **Karma** test
+  runner chain (`karma`, `karma-jasmine`, `chokidar`, `braces`…). They are only
+  used to run unit tests and are **never shipped in the Docker image** (Nginx
+  only serves the compiled files). Karma is deprecated by its maintainers:
+  moving the unit tests to another runner is the long-term fix.
+- **Container**: Nginx 1.30 runs as a non-root user. trivy can also report
+  vulnerabilities of the official base image (e.g. `libexpat` and `libx11` on
+  2026-10-19): they are picked up by the next build (`docker build --pull`)
+  once the official image is updated.
