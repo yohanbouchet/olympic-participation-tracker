@@ -1,0 +1,44 @@
+# =============================================================================
+# Fichier     : .releaserc.yml
+# Rôle        : configuration de semantic-release, identique dans les deux
+#               dépôts : calcule la version à partir des commits
+#               conventionnels, écrit CHANGELOG.md, synchronise la version
+#               (scripts/release.py), crée le commit, l'étiquette vX.Y.Z et la
+#               Release GitLab.
+# Utilise     : scripts/release.py, variable CI/CD GITLAB_TOKEN
+# Utilisé par : job "release" du .gitlab-ci.yml (commande semantic-release)
+# =============================================================================
+
+# Seule la branche main produit des versions
+branches:
+  - main
+# Format des étiquettes : v0.1.4 (comme les étiquettes de départ)
+tagFormat: "v${version}"
+
+# Plugins exécutés dans cet ordre ; un plugin avec réglages s'écrit
+# sous forme de paire : [nom du plugin, réglages]
+plugins:
+  # 1. Analyse des commits : fix → correctif, feat → mineure, "!" → majeure
+  - - "@semantic-release/commit-analyzer"
+    - preset: conventionalcommits
+  # 2. Notes de version rédigées à partir des mêmes commits
+  - - "@semantic-release/release-notes-generator"
+    - preset: conventionalcommits
+  # 3. Notes ajoutées en tête de CHANGELOG.md
+  - - "@semantic-release/changelog"
+    - changelogFile: CHANGELOG.md
+      changelogTitle: "# Changelog"
+  # 4. Notre script Python : écrit la version dans les fichiers du projet
+  - - "@semantic-release/exec"
+    - prepareCmd: "python3 scripts/release.py ${nextRelease.version}"
+  # 5. Commit des fichiers modifiés (les fichiers absents sont ignorés)
+  #    puis étiquette vX.Y.Z ; pas de [skip ci] : voir .gitlab-ci.yml
+  - - "@semantic-release/git"
+    - assets:
+        - CHANGELOG.md
+        - package.json
+        - package-lock.json
+        - build.gradle
+      message: "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+  # 6. Release GitLab (page Deploy → Releases) avec les notes de version
+  - "@semantic-release/gitlab"
