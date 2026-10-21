@@ -40,5 +40,8 @@ plugins:
         - package-lock.json
         - build.gradle
       message: "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
-  # 6. Release GitLab (page Deploy → Releases) avec les notes de version
-  - "@semantic-release/gitlab"
+  # 6. Release GitLab (page Deploy → Releases) avec les notes de version ;
+  #    sans commentaire sur les MR et tickets (droits du jeton réduits)
+  - - "@semantic-release/gitlab"
+    - successCommentCondition: false
+      failCommentCondition: false
