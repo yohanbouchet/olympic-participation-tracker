@@ -30,11 +30,13 @@ FROM nginx:1.30-alpine
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # On ne récupère QUE le site compilé, donné à l'utilisateur nginx
-COPY --from=build --chown=nginx:nginx \
+# (uid/gid 101 dans l'image officielle)
+COPY --from=build --chown=101:101 \
      /build/dist/olympic-games-starter/browser /app
 
-# Sécurité : le serveur ne tourne pas en root
-USER nginx
+# Sécurité : le serveur ne tourne pas en root. Numéro plutôt que nom :
+# Kubernetes (runAsNonRoot) ne sait vérifier qu'un uid numérique
+USER 101:101
 
 # Documentation : le conteneur écoute sur le port 80
 EXPOSE 80
