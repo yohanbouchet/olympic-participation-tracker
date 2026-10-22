@@ -3,7 +3,7 @@
 # Rôle        : pipeline GitLab CI GÉNÉRIQUE, identique dans les deux dépôts
 #               (API Spring Boot et front Angular). Chaque job ne se lance que
 #               si les fichiers de son type de projet existent (rules: exists).
-# Étapes      : test → build (image Docker) → release (semantic-release)
+# Étapes      : test → build (image(s) Docker) → release (semantic-release)
 # Utilise     : scripts/run-tests.sh, scripts/smoke-test.sh, .releaserc.yml
 #               (+ scripts/release.py), variable CI/CD GITLAB_TOKEN
 # =============================================================================
@@ -98,8 +98,9 @@ test:angular:
     - exists:
         - angular.json
 
-# ---------- Construction, test et publication de l'image Docker ----------
-build:image:
+# ---------- Modèle commun : construire, tester et publier UNE image ---------
+# (nom en "." = non lancé seul ; utilisé par build:image et build:db-image)
+.build-image:
   stage: build
   # Client Docker + démon Docker-in-Docker lancé à côté, sous le nom "docker"
   image: $DOCKER_IMAGE
@@ -108,10 +109,11 @@ build:image:
   variables:
     # Communication chiffrée (TLS) entre le client et le démon Docker
     DOCKER_TLS_CERTDIR: "/certs"
-    # Deux tags pour la même image : l'un FIXE (SHA court, ne change jamais)
-    # et l'autre MOBILE (nom de branche "nettoyé" : toujours la dernière)
-    IMAGE_FIXED: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
-    IMAGE_MOVING: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+    # Valeurs par défaut (image de l'application) ; un job peut les changer :
+    # dossier à construire, adresse de l'image, type de smoke test
+    BUILD_CONTEXT: "."
+    IMAGE_PATH: "$CI_REGISTRY_IMAGE"
+    SMOKE_KIND: "app"
   before_script:
     # smoke-test.sh est écrit en Bash, absent de l'image docker (Alpine)
     - apk add --no-cache bash > /dev/null
@@ -121,28 +123,52 @@ build:image:
       | docker login --username "$CI_REGISTRY_USER"
       --password-stdin "$CI_REGISTRY"
   script:
-    # Sur une étiquette v1.2.3 : tag fixe 1.2.3 (version sémantique) et tag
-    # mobile latest ; ${CI_COMMIT_TAG#v} retire le "v" du début
+    # Deux tags pour la même image : l'un FIXE, l'autre MOBILE
+    # - branche : SHA court (fixe) + nom de branche "nettoyé" (mobile)
+    # - étiquette v1.2.3 : 1.2.3 (fixe) + latest (mobile) ;
+    #   ${CI_COMMIT_TAG#v} retire le "v" du début
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
-        IMAGE_FIXED="$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
-        IMAGE_MOVING="$CI_REGISTRY_IMAGE:latest"
+        IMAGE_FIXED="$IMAGE_PATH:${CI_COMMIT_TAG#v}"
+        IMAGE_MOVING="$IMAGE_PATH:latest"
+      else
+        IMAGE_FIXED="$IMAGE_PATH:$CI_COMMIT_SHORT_SHA"
+        IMAGE_MOVING="$IMAGE_PATH:$CI_COMMIT_REF_SLUG"
       fi
-    - docker build --pull --tag "$IMAGE_FIXED" --tag "$IMAGE_MOVING" .
+    - docker build --pull --tag "$IMAGE_FIXED" --tag "$IMAGE_MOVING"
+      "$BUILD_CONTEXT"
     # L'image doit démarrer et répondre AVANT d'être publiée
-    - ./scripts/smoke-test.sh "$IMAGE_FIXED"
+    - ./scripts/smoke-test.sh "$IMAGE_FIXED" "$SMOKE_KIND"
     - docker push "$IMAGE_FIXED"
     - docker push "$IMAGE_MOVING"
   # Déconnexion du registre en fin de job (même en cas d'échec) :
   # le jeton ne reste pas stocké dans le conteneur
   after_script:
     - docker logout "$CI_REGISTRY"
+
+# ---------- Image de l'application (les deux dépôts) ----------
+build:image:
+  extends: .build-image
   # Sur les pipelines de branche et d'étiquette (pas en double sur la MR)
   # et si le dépôt contient un Dockerfile
   rules:
     - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
       exists:
         - Dockerfile
+
+# ---------- Image PostgreSQL sans gosu (API seulement) ----------
+build:db-image:
+  extends: .build-image
+  # Même modèle, autre dossier, autre adresse : .../<projet>/postgres:<tag>
+  variables:
+    BUILD_CONTEXT: "database"
+    IMAGE_PATH: "$CI_REGISTRY_IMAGE/postgres"
+    SMOKE_KIND: "postgres"
+  # Seulement si le dépôt contient database/Dockerfile (donc pas le front)
+  rules:
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+      exists:
+        - database/Dockerfile
 
 # ---------- Release : version, changelog, étiquette, Release GitLab ---------
 release:
