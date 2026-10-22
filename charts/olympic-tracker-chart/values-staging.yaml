@@ -1,0 +1,19 @@
+# =============================================================================
+# Fichier     : charts/olympic-tracker-chart/values-staging.yaml
+# Rôle        : valeurs de l'environnement STAGING (seules les DIFFÉRENCES
+#               avec values.yaml) : version figée, 2 Pods, plus de ressources
+# Utilisé par : helm install … -n staging -f values-staging.yaml
+# =============================================================================
+app:
+  # 2 Pods : on teste la répartition du trafic, comme en production
+  replicaCount: 2
+  image:
+    # Version sémantique FIGÉE : on teste exactement ce qui partira en prod
+    tag: "0.2.0"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 48Mi
+    limits:
+      cpu: 300m
+      memory: 96Mi
