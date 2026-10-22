@@ -1,8 +1,17 @@
+# =============================================================================
+# Fichier     : k8s/service-app.yaml
+# Rôle        : Service du front : adresse fixe du cluster qui répartit le
+#               trafic vers les Pods portant le label app: olympic-games-app
+# Utilise     : Pods du Deployment olympic-games-app-deployment
+# Utilisé par : kubectl port-forward svc/olympic-games-app-service 8081:80
+#               (LoadBalancer : IP externe seulement avec minikube tunnel)
+# =============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: olympic-games-app-service
 spec:
+  # Doit correspondre aux labels du Pod (template du Deployment)
   selector:
     app: olympic-games-app
   ports:
