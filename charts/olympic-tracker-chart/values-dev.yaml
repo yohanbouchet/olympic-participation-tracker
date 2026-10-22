@@ -1,0 +1,10 @@
+# =============================================================================
+# Fichier     : charts/olympic-tracker-chart/values-dev.yaml
+# Rôle        : valeurs de l'environnement DEV (seules les DIFFÉRENCES avec
+#               values.yaml) : dernière image publiée, ressources par défaut
+# Utilisé par : helm install … -n dev -f values-dev.yaml
+# =============================================================================
+app:
+  image:
+    # latest = dernière version publiée par la release (suit le projet)
+    tag: "latest"

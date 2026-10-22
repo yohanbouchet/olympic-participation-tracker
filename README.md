@@ -181,9 +181,9 @@ green with "There are no relevant changes": nothing is published.
 
 **`scripts/release.py`** (Python 3, standard library only)
 
-| | |
+| Item | Details |
 |---|---|
-| Purpose | writes the new version in the project files before the release commit |
+| Purpose | writes the new version in the project files before the release commit (`package.json` + lock or `build.gradle`, and `appVersion` of `charts/*/Chart.yaml`) |
 | Called by | `@semantic-release/exec` (`prepareCmd` in `.releaserc.yml`) |
 | Usage | `python3 scripts/release.py <version>` (e.g. `0.2.5`) |
 | Detection | same rule as `run-tests.sh`: `gradlew` + `build.gradle` → Spring Boot, `package.json` + `angular.json` → Angular |
@@ -251,6 +251,104 @@ Run the same checks locally:
 - `python3 scripts/release.py 9.9.9` on a copy of the project, to see which
   file would be updated (do not commit it: versions are written by the
   release job only).
+
+## Deployment on Kubernetes (Minikube + Helm)
+
+The application runs on a local Kubernetes cluster (Minikube) in two
+environments, `dev` and `staging`, each in its own namespace.
+
+### Prerequisites
+
+| Tool | Version used | Check |
+|---|---|---|
+| Minikube (Docker driver) | 1.39 (Kubernetes 1.37) | `minikube status` |
+| kubectl | 1.37 | `kubectl version --client` |
+| Helm | 4.3 | `helm version` |
+
+```bash
+minikube start --driver=docker --cpus=4 --memory=6g   # after a reboot: minikube start
+kubectl create namespace dev
+kubectl create namespace staging
+```
+
+The images live in the **private** GitLab Container Registry. Each namespace
+gets its own read-only access: one GitLab **deploy token** per environment
+(scope `read_registry` only), stored as a `docker-registry` Secret named
+`gitlab-registry`. The token is typed without being displayed and is never
+committed:
+
+```bash
+read -rp "Deploy token username: " DT_USER
+read -rsp "Deploy token: " DT_PASS; echo
+kubectl -n dev create secret docker-registry gitlab-registry \
+  --docker-server=registry.gitlab.com \
+  --docker-username="$DT_USER" --docker-password="$DT_PASS"
+unset DT_USER DT_PASS
+# same for staging, with its own deploy token
+```
+
+### Raw manifests (`k8s/`)
+
+The `k8s/` folder holds the plain Kubernetes manifests (first deployment,
+kept as reference). The Helm chart below is built from them.
+
+| File | Resource |
+|---|---|
+| `k8s/deployment-app.yaml` | Deployment: 1 Nginx Pod, non-root (`runAsNonRoot`, uid 101), image pulled with `gitlab-registry` |
+| `k8s/service-app.yaml` | Service `olympic-games-app-service`, port 80 |
+
+### Helm chart (`charts/olympic-tracker-chart`)
+
+```
+charts/olympic-tracker-chart/
+├── Chart.yaml            chart version + appVersion (synced by release.py)
+├── values.yaml           default values
+├── values-dev.yaml       dev overrides
+├── values-staging.yaml   staging overrides
+└── templates/            deployment.yaml, service.yaml, NOTES.txt
+```
+
+Values that can change per environment: `app.replicaCount`,
+`app.image.repository`, `app.image.tag`, `app.port`, `app.imagePullSecret`,
+`app.resources`.
+
+### Environments
+
+| Setting | dev | staging |
+|---|---|---|
+| Namespace | `dev` | `staging` |
+| Replicas | 1 | 2 |
+| Image tag | `latest` (last release) | `0.2.0` (fixed semantic version) |
+| CPU request / limit | 50m / 200m | 100m / 300m |
+| Memory request / limit | 32Mi / 64Mi | 48Mi / 96Mi |
+| Registry access | deploy token `minikube-pull-dev` | deploy token `minikube-pull-staging` |
+
+```bash
+helm lint charts/olympic-tracker-chart
+helm install olympic-games-app charts/olympic-tracker-chart -n dev \
+  -f charts/olympic-tracker-chart/values-dev.yaml --wait
+helm install olympic-games-app charts/olympic-tracker-chart -n staging \
+  -f charts/olympic-tracker-chart/values-staging.yaml --wait
+kubectl -n dev port-forward svc/olympic-games-app-service 8081:80
+# then open http://localhost:8081
+```
+
+Update, roll back or remove a release:
+
+```bash
+helm upgrade olympic-games-app charts/olympic-tracker-chart -n staging \
+  -f charts/olympic-tracker-chart/values-staging.yaml --wait
+helm history olympic-games-app -n staging
+helm rollback olympic-games-app <revision> -n staging
+helm uninstall olympic-games-app -n staging
+```
+
+### Kubernetes security
+
+- Containers refuse to start as root (`runAsNonRoot`) and cannot gain
+  privileges (`allowPrivilegeEscalation: false`); images use numeric users.
+- No credential is committed: registry tokens and database passwords are
+  created in the cluster, one per environment.
 
 ## Security
 
