@@ -1,0 +1,37 @@
+# =============================================================================
+# Fichier     : charts/olympic-tracker-chart/templates/deployment.yaml
+# Rôle        : Deployment du front (repris de k8s/deployment-app.yaml) ;
+#               les expressions entre doubles accolades sont remplacées par
+#               les valeurs de values.yaml (jamais d'accolades dans un
+#               commentaire : Helm les interpréterait aussi)
+# Utilise     : values.yaml (.Values.app), nom de la release (.Release.Name)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Nom préfixé par la release : unique même si on installe plusieurs fois
+  name: {{ .Release.Name }}-deployment
+spec:
+  replicas: {{ .Values.app.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: {{ .Release.Name }}
+        image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.app.port }}
+        # Bloc recopié tel quel depuis values.yaml, décalé de 10 espaces
+        resources:
+          {{- toYaml .Values.app.resources | nindent 10 }}
+        # Sécurité : refuse root (image en uid 101), pas d'élévation
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+      imagePullSecrets:
+        - name: {{ .Values.app.imagePullSecret }}
