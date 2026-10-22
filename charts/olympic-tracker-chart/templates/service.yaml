@@ -1,0 +1,18 @@
+# =============================================================================
+# Fichier     : charts/olympic-tracker-chart/templates/service.yaml
+# Rôle        : Service du front (repris de k8s/service-app.yaml)
+# Utilise     : values.yaml (.Values.app.port), nom de la release
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-service
+spec:
+  # Doit correspondre aux labels du Pod (templates/deployment.yaml)
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.app.port }}
+      targetPort: {{ .Values.app.port }}
+  type: LoadBalancer

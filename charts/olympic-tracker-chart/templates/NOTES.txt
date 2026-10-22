@@ -1,0 +1,4 @@
+{{ .Release.Name }} is deployed in namespace {{ .Release.Namespace }}.
+Open the app:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-service 8081:{{ .Values.app.port }}
+  then browse http://localhost:8081

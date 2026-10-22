@@ -1,0 +1,26 @@
+# =============================================================================
+# Fichier     : charts/olympic-tracker-chart/values.yaml
+# Rôle        : valeurs PAR DÉFAUT du chart (cases à remplir des templates) ;
+#               un environnement les remplace avec -f values-<env>.yaml
+# Utilisé par : templates/deployment.yaml, templates/service.yaml
+# =============================================================================
+app:
+  # Nombre de Pods identiques
+  replicaCount: 1
+  image:
+    # Image du registre GitLab ; tag FIXE (SHA du commit de main)
+    repository: registry.gitlab.com/web-device-34-bouchet/olympic-participation-tracker
+    tag: "73d98527"
+  # Port d'écoute de Nginx dans le conteneur
+  port: 80
+  # Secret docker-registry créé à part dans le namespace (deploy token)
+  imagePullSecret: gitlab-registry
+  # Ressources : "requests" = réservé au démarrage, "limits" = plafond
+  # (mesuré : Nginx utilise ~7 Mio de mémoire)
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
