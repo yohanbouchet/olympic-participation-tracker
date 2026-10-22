@@ -1,3 +1,10 @@
+# =============================================================================
+# Fichier     : k8s/deployment-app.yaml
+# Rôle        : Deployment du front Angular (Nginx) : maintient 1 Pod lancé
+#               à partir de l'image du registre GitLab
+# Utilise     : Secret gitlab-registry (accès au registre privé)
+# Utilisé par : kubectl apply -f k8s/ ; Service olympic-games-app-service
+# =============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +21,17 @@ spec:
     spec:
       containers:
       - name: olympic-games-app
-        # TODO: add the image of the application from the gitlab registry
+        # Image du registre GitLab, tag FIXE (SHA du commit) : on déploie
+        # exactement l'image testée par la CI
+        image: registry.gitlab.com/web-device-34-bouchet/olympic-participation-tracker:fe44b509
         ports:
         - containerPort: 80
-      # TODO: define imagePullSecrets to use a docker-registry secret and authorize Kubenetes 
+        # Sécurité : Kubernetes refuse de lancer le conteneur s'il tourne en
+        # root (vérifiable car l'image déclare un uid numérique : 101)
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+      # Identifiants du registre privé : Secret créé avec un deploy token
+      # en lecture seule (kubectl create secret docker-registry gitlab-registry)
+      imagePullSecrets:
+        - name: gitlab-registry
