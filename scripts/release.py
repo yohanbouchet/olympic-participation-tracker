@@ -4,7 +4,8 @@
 # Rôle        : script d'automatisation de semantic-release, identique dans les
 #               deux dépôts : écrit la nouvelle version dans les fichiers du
 #               projet (package.json + package-lock.json pour Angular,
-#               build.gradle pour Spring Boot) avant le commit de release.
+#               build.gradle pour Spring Boot) et l'appVersion des charts Helm
+#               (charts/*/Chart.yaml) avant le commit de release.
 # Usage       : python3 scripts/release.py <version>   (ex. 0.1.4)
 # Codes       : 0 = version écrite | 1 = mauvais usage
 #               2 = type de projet inconnu | 3 = version ou fichier invalide
@@ -19,6 +20,8 @@ from pathlib import Path
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 # Ligne de version de build.gradle, ex. : version = '0.2.4'
 GRADLE_VERSION = re.compile(r"^version = '[^']*'$", re.MULTILINE)
+# Ligne de version de l'appli dans Chart.yaml, ex. : appVersion: "0.2.0"
+CHART_APP_VERSION = re.compile(r'^appVersion: "[^"]*"$', re.MULTILINE)
 
 
 def log(message):
@@ -57,6 +60,18 @@ def update_gradle(path, version):
     log(f"{path.name}: {match.group(0)} -> version = '{version}'")
 
 
+def update_charts(root, version):
+    """Écrit la version dans l'appVersion de chaque charts/*/Chart.yaml."""
+    for path in sorted(root.glob("charts/*/Chart.yaml")):
+        text = path.read_text(encoding="utf-8")
+        if not CHART_APP_VERSION.search(text):
+            fail(f"no 'appVersion: \"...\"' line in {path}", 3)
+        new_line = f'appVersion: "{version}"'
+        path.write_text(CHART_APP_VERSION.sub(new_line, text, count=1),
+                        encoding="utf-8")
+        log(f"{path.relative_to(root)}: appVersion -> {version}")
+
+
 def main():
     # Un seul argument attendu : la version calculée par semantic-release
     if len(sys.argv) != 2:
@@ -81,6 +96,8 @@ def main():
             update_json(root / "package-lock.json", version)
     else:
         fail(f"unknown project type in {root}", 2)
+    # Charts Helm du dépôt (s'il y en a) : version de l'appli livrée
+    update_charts(root, version)
     log(f"version {version} synchronised")
 
 

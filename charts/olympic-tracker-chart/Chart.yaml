@@ -11,4 +11,4 @@ type: application
 # Version du CHART (à augmenter quand les templates changent)
 version: 0.1.0
 # Version de l'APPLICATION livrée (dernière release semantic-release)
-appVersion: "0.1.4"
+appVersion: "0.2.0"

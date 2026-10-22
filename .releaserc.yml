@@ -39,6 +39,7 @@ plugins:
         - package.json
         - package-lock.json
         - build.gradle
+        - charts/*/Chart.yaml
       message: "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
   # 6. Release GitLab (page Deploy → Releases) avec les notes de version ;
   #    sans commentaire sur les MR et tickets (droits du jeton réduits)
