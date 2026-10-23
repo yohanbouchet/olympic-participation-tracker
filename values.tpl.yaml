@@ -1,4 +1,0 @@
-app:
-  image:
-  port:
-  imagePullSecret:
