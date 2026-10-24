@@ -111,15 +111,30 @@ API and Olympic Participation Tracker). Each job only runs when the files of
 its project type exist (`rules: exists`), so the pipeline adapts itself.
 
 ```mermaid
-flowchart LR
-  A[git push or merge request] --> B[test: scripts/run-tests.sh]
-  B --> C[JUnit report in the GitLab Tests tab]
-  B --> D[build: docker build + scripts/smoke-test.sh]
-  D --> E["push to the GitLab Container Registry (tags: branch, commit SHA)"]
-  E --> F["release on main, manual button: semantic-release"]
-  F --> G["commit chore(release), tag vX.Y.Z, GitLab Release"]
-  G --> H["tag pipeline: test + build (tags: X.Y.Z, latest)"]
+flowchart TB
+  A[git push or merge request] --> T
+  subgraph T [stage test]
+    direction LR
+    T1["unit tests: scripts/run-tests.sh (JUnit report)"]
+    T2["test:helm: helm lint + helm template"]
+  end
+  T --> B["build: docker build, smoke test, push to the GitLab registry (tags: commit SHA, branch)"]
+  B --> S
+  subgraph S [stage security]
+    direction LR
+    S1["hadolint: Dockerfiles"]
+    S2["trivy: published image, blocks on CRITICAL"]
+  end
+  S --> R["release on main, manual button: semantic-release (tag vX.Y.Z, GitLab Release)"]
+  R --> P["tag pipeline: same stages, images X.Y.Z + latest"]
+  P --> H["helm upgrade --install, from the workstation"]
+  H --> D["namespace dev (image latest)"]
+  H --> G["namespace staging (image X.Y.Z)"]
 ```
+
+On merge request pipelines, only the checks run (tests, `test:helm`,
+hadolint): images are built, scanned and published once per commit, on the
+branch or tag pipeline.
 
 - **Triggers**: every branch push, every merge request (no duplicate
   pipeline when a merge request is open) and every version tag `vX.Y.Z`.
@@ -140,10 +155,28 @@ flowchart LR
   | branch (e.g. `main`) | short commit SHA (`:3a979237`) | branch name (`:main`) |
   | version tag (e.g. `v1.2.3`) | semantic version (`:1.2.3`) | `:latest` |
 
+- **Helm chart check** (`test:helm`, every pipeline): `helm lint` with the
+  default, dev and staging values, then `helm template` renders all the
+  Kubernetes manifests. No cluster is needed: a broken chart is caught before
+  any deployment.
+- **Security** (stage `security`, see [Security](#security) for the results):
+
+  | Job | Tool | Checks | Fails the pipeline when |
+  |---|---|---|---|
+  | `security:hadolint` | hadolint 2.14.0 | Dockerfile good practices (starts at once, `needs: []`) | any finding |
+  | `security:trivy` | trivy 0.75.0 | the image just published: system packages and application libraries | a **CRITICAL** vulnerability remains |
+
+  HIGH vulnerabilities are listed in the job log and in the report
+  `trivy-security-trivy.txt` (job artifact, kept one week) but do not block.
+  A CRITICAL vulnerability that cannot be fixed yet can be accepted in a
+  `.trivyignore` file at the root of the repository, one CVE per line, with a
+  reason and an expiry date (`CVE-XXXX-YYYY exp:2026-12-31`): after that date
+  the pipeline fails again.
 - **Secrets**: the registry password is a temporary job token provided by
   GitLab, sent with `--password-stdin` (never printed) and removed at the end
-  of the job (`docker logout` in `after_script`). The release job uses the
-  `GITLAB_TOKEN` variable (see below).
+  of the job (`docker logout` in `after_script`); trivy reads the image with
+  the same temporary token. The release job uses the `GITLAB_TOKEN` variable
+  (see below).
 
 ### Releases (semantic-release)
 
@@ -222,7 +255,10 @@ with semantic-release 25), plugins `changelog`, `exec`, `git`, `gitlab`.
 | Test command (inside `run-tests.sh`) | `./gradlew clean test` | `npm test` (Karma, headless Chrome) |
 | Raw JUnit reports | `build/test-results/test/` | `reports/` |
 | Cache | `.gradle/` (key: `build.gradle` + Gradle wrapper version) | `.npm/` (key: `package-lock.json`) |
-| Build job | `build:image` (shared) | `build:image` (shared) |
+| Helm chart check | `test:helm` on `charts/workshop-api-chart` | `test:helm` on `charts/olympic-tracker-chart` |
+| Build job | `build:image` + `build:db-image` (PostgreSQL) | `build:image` (shared) |
+| Security jobs | `security:hadolint` (2 Dockerfiles), `security:trivy` + `security:trivy-db` | `security:hadolint`, `security:trivy` |
+| Accepted vulnerabilities | `.trivyignore`: 2 Spring CVEs until 2026-12-31 | none |
 | Docker image | multi-stage: JDK 21 + Gradle, then JRE 21 (WAR) | multi-stage: Node 24, then Nginx 1.30 |
 | Smoke test (inside `smoke-test.sh`) | API + temporary PostgreSQL, `GET /api/notions` | Nginx, `GET /` |
 | Version file (synced by `release.py`) | `build.gradle` (`version = '…'`) | `package.json` + `package-lock.json` |
@@ -250,7 +286,16 @@ Run the same checks locally:
   (exit code 0 = the image answers, 1 = it does not, 2 = unknown project);
 - `python3 scripts/release.py 9.9.9` on a copy of the project, to see which
   file would be updated (do not commit it: versions are written by the
-  release job only).
+  release job only);
+- the CI security and chart checks, with the same pinned images:
+
+  ```bash
+  docker run --rm -i hadolint/hadolint:v2.14.0-alpine hadolint - < Dockerfile
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+    aquasec/trivy:0.75.0 image --severity HIGH,CRITICAL my-image
+  helm lint charts/olympic-tracker-chart \
+    -f charts/olympic-tracker-chart/values-staging.yaml
+  ```
 
 ## Deployment on Kubernetes (Minikube + Helm)
 
@@ -364,7 +409,23 @@ Dependencies are checked with **npm audit**, the Docker image with **trivy**
   used to run unit tests and are **never shipped in the Docker image** (Nginx
   only serves the compiled files). Karma is deprecated by its maintainers:
   moving the unit tests to another runner is the long-term fix.
-- **Container**: Nginx 1.30 runs as a non-root user. trivy can also report
-  vulnerabilities of the official base image (e.g. `libexpat` and `libx11` on
-  2026-10-19): they are picked up by the next build (`docker build --pull`)
-  once the official image is updated.
+- **Container**: Nginx 1.30 runs as a non-root user. Every pipeline scans
+  the published image with trivy (see [CI/CD pipeline](#cicd-pipeline-gitlab)).
+  On 2026-10-24 it reported 1 HIGH vulnerability in a system library of the
+  official image (`brotli-libs`, CVE-2026-111497) whose fix was not yet in
+  the official image. The final stage of the Dockerfile now runs
+  `apk upgrade --no-cache`, which applies the Alpine security fixes at build
+  time (same Alpine release, fixes only). Result: **0 HIGH, 0 CRITICAL**,
+  smoke test unchanged.
+
+## Known limits and next steps
+
+| Topic | Current state | Next step |
+|---|---|---|
+| Deployment | Helm releases are installed from the workstation on a local Minikube cluster; the CI cannot reach it | deployment job (`helm upgrade --install`) to a shared cluster, with an environment per namespace |
+| Unit test runner | Karma, deprecated, carries the 6 remaining npm audit HIGH (test tools only) | move the unit tests to another runner |
+| Image reproducibility | `apk upgrade` at build time: two builds of the same commit can contain different (patched) system packages | accepted for security; images are traceable by their commit SHA tag |
+| Dependency updates | detected by trivy and npm audit, updated by hand | Renovate bot opening update merge requests |
+| Web server hardening | `nginx/nginx.conf` sets cache headers only, no security headers | security headers (Content-Security-Policy, frame protection, `nosniff`) in `nginx/nginx.conf` |
+| Kubernetes health | no probe on the front: Kubernetes only checks that the Nginx process runs | readiness and liveness probes (`GET /`), NetworkPolicy (needs a CNI that enforces it) |
+| Supply chain | images tagged and scanned | image signing (cosign) and SBOM |

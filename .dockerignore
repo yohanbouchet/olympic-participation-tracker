@@ -24,7 +24,6 @@ coverage
 .editorconfig
 README.md
 k8s
-values.tpl.yaml
 
 # Fichiers Docker eux-mêmes
 Dockerfile
