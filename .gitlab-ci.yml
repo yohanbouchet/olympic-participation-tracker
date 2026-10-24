@@ -3,8 +3,8 @@
 # Rôle        : pipeline GitLab CI GÉNÉRIQUE, identique dans les deux dépôts
 #               (API Spring Boot et front Angular). Chaque job ne se lance que
 #               si les fichiers de son type de projet existent (rules: exists).
-# Étapes      : test → build (image(s) Docker) → security (hadolint, trivy)
-#               → release (semantic-release)
+# Étapes      : test (tests + chart Helm) → build (image(s) Docker)
+#               → security (hadolint, trivy) → release (semantic-release)
 # Utilise     : scripts/run-tests.sh, scripts/smoke-test.sh, .releaserc.yml
 #               (+ scripts/release.py), .trivyignore (API), variable CI/CD
 #               GITLAB_TOKEN
@@ -21,6 +21,8 @@ variables:
   # Outils de sécurité, versions fixées (même résultat à chaque pipeline)
   HADOLINT_IMAGE: "hadolint/hadolint:v2.14.0-alpine"
   TRIVY_IMAGE: "aquasec/trivy:0.75.0"
+  # Helm 4.3.1 : même version que sur le poste de déploiement
+  HELM_IMAGE: "alpine/helm:4.3.1"
 
 # Déclenchement : sur chaque push de branche, sur les merge requests et sur
 # les étiquettes de version, sans doublon (règles lues dans l'ordre, la
@@ -43,6 +45,33 @@ stages:
   - build
   - security
   - release
+
+# ---------- Validation du chart Helm du dépôt (sans cluster) ----------
+test:helm:
+  stage: test
+  image:
+    name: $HELM_IMAGE
+    # L'image lance "helm" d'office : on vide ce point d'entrée
+    entrypoint: [""]
+  script:
+    # Pour chaque chart : lint avec les valeurs par défaut, de dev et de
+    # staging, puis rendu complet des manifestes (aucun cluster requis).
+    # db.password=ci-lint : valeur factice exigée par "required" (chart de
+    # l'API), ce n'est pas un secret ; le chart du front l'ignore
+    - |
+      for CHART in charts/*/; do
+        helm lint "$CHART" --set db.password=ci-lint
+        helm lint "$CHART" -f "${CHART}values-dev.yaml" \
+          --set db.password=ci-lint
+        helm lint "$CHART" -f "${CHART}values-staging.yaml" \
+          --set db.password=ci-lint
+        helm template ci "$CHART" -f "${CHART}values-staging.yaml" \
+          --set db.password=ci-lint > /dev/null
+      done
+  # Dans tous les pipelines (MR comprises), si le dépôt contient un chart
+  rules:
+    - exists:
+        - charts/*/Chart.yaml
 
 # ---------- Modèle commun aux jobs de test (nom en "." = non lancé seul) ----
 .test:
