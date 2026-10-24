@@ -172,6 +172,11 @@ branch or tag pipeline.
   `.trivyignore` file at the root of the repository, one CVE per line, with a
   reason and an expiry date (`CVE-XXXX-YYYY exp:2026-12-31`): after that date
   the pipeline fails again.
+- **Nightly scan**: a pipeline schedule (Build → Pipeline schedules) runs on
+  `main` every night. It runs the tests and checks but **does not build**:
+  trivy scans the image `:latest` (the last released version) with that
+  day's vulnerability database, so a new CRITICAL CVE fails the pipeline
+  even when the code has not changed, and published tags stay immutable.
 - **Secrets**: the registry password is a temporary job token provided by
   GitLab, sent with `--password-stdin` (never printed) and removed at the end
   of the job (`docker logout` in `after_script`); trivy reads the image with
