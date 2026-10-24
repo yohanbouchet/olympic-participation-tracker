@@ -26,6 +26,10 @@ RUN npm run build
 # Nginx 1.30, branche stable supportée (la 1.27 du README est en fin de vie)
 FROM nginx:1.30-alpine
 
+# Sécurité : applique les correctifs Alpine publiés depuis la sortie de
+# l'image officielle (même version d'Alpine, correctifs seulement)
+RUN apk upgrade --no-cache
+
 # Configuration fournie par le dépôt : sert le dossier /app sur le port 80
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
