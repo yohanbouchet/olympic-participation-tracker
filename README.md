@@ -409,11 +409,13 @@ Dependencies are checked with **npm audit**, the Docker image with **trivy**
   `ng update` (same major version), then `npm audit fix` without `--force`.
   Result: npm audit **60 → 6** vulnerabilities, **0 critical**; tests, build
   and smoke test unchanged.
-- **Remaining vulnerabilities**: the 6 HIGH are all in the **Karma** test
-  runner chain (`karma`, `karma-jasmine`, `chokidar`, `braces`…). They are only
-  used to run unit tests and are **never shipped in the Docker image** (Nginx
-  only serves the compiled files). Karma is deprecated by its maintainers:
-  moving the unit tests to another runner is the long-term fix.
+- **Second update (2026-10-25, issue #1)**: `npm audit` reported 4 HIGH and
+  1 LOW in the development toolchain (`@angular/cli`, `vite`, `body-parser`,
+  `@modelcontextprotocol/sdk`). `npm audit fix` without `--force` updated 11
+  packages in `package-lock.json` (Angular CLI 20.3.40 → 20.3.41, same major
+  version). Result: npm audit **0 vulnerabilities**; tests, build and smoke
+  test unchanged. These tools are never shipped in the Docker image (Nginx
+  only serves the compiled files).
 - **Container**: Nginx 1.30 runs as a non-root user. Every pipeline scans
   the published image with trivy (see [CI/CD pipeline](#cicd-pipeline-gitlab)).
   On 2026-10-24 it reported 1 HIGH vulnerability in a system library of the
@@ -428,7 +430,8 @@ Dependencies are checked with **npm audit**, the Docker image with **trivy**
 | Topic | Current state | Next step |
 |---|---|---|
 | Deployment | Helm releases are installed from the workstation on a local Minikube cluster; the CI cannot reach it | deployment job (`helm upgrade --install`) to a shared cluster, with an environment per namespace |
-| Unit test runner | Karma, deprecated, carries the 6 remaining npm audit HIGH (test tools only) | move the unit tests to another runner |
+| Framework support | Angular 20 receives security fixes until 2026-11-28 (endoflife.date) | upgrade to Angular 22 (supported until 2028-06-30) |
+| Unit test runner | Karma, deprecated by its maintainers (test tool only) | move the unit tests to another runner |
 | Image reproducibility | `apk upgrade` at build time: two builds of the same commit can contain different (patched) system packages | accepted for security; images are traceable by their commit SHA tag |
 | Dependency updates | detected by trivy and npm audit, updated by hand | Renovate bot opening update merge requests |
 | Web server hardening | `nginx/nginx.conf` sets cache headers only, no security headers | security headers (Content-Security-Policy, frame protection, `nosniff`) in `nginx/nginx.conf` |
