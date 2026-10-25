@@ -263,7 +263,7 @@ with semantic-release 25), plugins `changelog`, `exec`, `git`, `gitlab`.
 | Helm chart check | `test:helm` on `charts/workshop-api-chart` | `test:helm` on `charts/olympic-tracker-chart` |
 | Build job | `build:image` + `build:db-image` (PostgreSQL) | `build:image` (shared) |
 | Security jobs | `security:hadolint` (2 Dockerfiles), `security:trivy` + `security:trivy-db` | `security:hadolint`, `security:trivy` |
-| Accepted vulnerabilities | `.trivyignore`: 2 Spring CVEs until 2026-12-31 | none |
+| Accepted vulnerabilities | none (the 2 Spring CVEs were fixed by Spring Boot 4 on 2026-10-25) | none |
 | Docker image | multi-stage: JDK 21 + Gradle, then JRE 21 (WAR) | multi-stage: Node 24, then Nginx 1.30 |
 | Smoke test (inside `smoke-test.sh`) | API + temporary PostgreSQL, `GET /api/notions` | Nginx, `GET /` |
 | Version file (synced by `release.py`) | `build.gradle` (`version = '…'`) | `package.json` + `package-lock.json` |
