@@ -269,7 +269,7 @@ with semantic-release 25), plugins `changelog`, `exec`, `git`, `gitlab`.
 | Version file (synced by `release.py`) | `build.gradle` (`version = '…'`) | `package.json` + `package-lock.json` |
 | First version released | 0.2.5 (starting tag `v0.2.4`) | 0.1.4 (starting tag `v0.1.3`) |
 | Registry image | `registry.gitlab.com/web-device-34-bouchet/workshop-organizer-api` | `registry.gitlab.com/web-device-34-bouchet/olympic-participation-tracker` |
-| Compressed image size | 122.6 MB | 28.6 MB |
+| Compressed image size (registry) | 129.4 MB (0.4.0) | 26.6 MB (0.3.0) |
 
 ### Differences between local and CI environments
 
@@ -368,7 +368,7 @@ Values that can change per environment: `app.replicaCount`,
 |---|---|---|
 | Namespace | `dev` | `staging` |
 | Replicas | 1 | 2 |
-| Image tag | `latest` (last release) | `0.2.0` (fixed semantic version) |
+| Image tag | `latest` (last release) | `0.3.0` (fixed semantic version) |
 | CPU request / limit | 50m / 200m | 100m / 300m |
 | Memory request / limit | 32Mi / 64Mi | 48Mi / 96Mi |
 | Registry access | deploy token `minikube-pull-dev` | deploy token `minikube-pull-staging` |
