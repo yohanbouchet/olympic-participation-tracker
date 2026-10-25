@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/compare/v0.2.0...v0.3.0) (2026-10-25)
+
+### Features
+
+* **helm:** ajoute les valeurs des environnements dev et staging ([7206acc](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/commit/7206acc3d7c51b00fb3fc29d081f73e6182df3bb))
+* **release:** synchronise l'appVersion des charts Helm ([4db9c74](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/commit/4db9c74b3d9467ec12a5d29740edc37e89466ff5))
+
+### Bug Fixes
+
+* **deps:** corrige les failles npm audit des outils de développement ([9736157](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/commit/973615769f39c517f5418e7248565f27c4e4cceb)), closes [#1](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/issues/1)
+
 ## [0.2.0](https://gitlab.com/web-device-34-bouchet/olympic-participation-tracker/compare/v0.1.4...v0.2.0) (2026-10-22)
 
 ### Features
