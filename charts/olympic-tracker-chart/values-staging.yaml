@@ -9,7 +9,7 @@ app:
   replicaCount: 2
   image:
     # Version sémantique FIGÉE : on teste exactement ce qui partira en prod
-    tag: "0.2.0"
+    tag: "0.3.0"
   resources:
     requests:
       cpu: 100m
